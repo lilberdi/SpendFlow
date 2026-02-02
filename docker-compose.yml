@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    container_name: spendflow_db
+    environment:
+      POSTGRES_DB: spendflow
+      POSTGRES_USER: spendflow
+      POSTGRES_PASSWORD: spendflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - spendflow_pg:/var/lib/postgresql/data
+
+volumes:
+  spendflow_pg:
