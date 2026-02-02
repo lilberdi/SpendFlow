@@ -8,6 +8,10 @@ pandas = "*"
 streamlit = "*"
 notebook = "*"
 opencv-python-headless = "*"
+sqlalchemy = "*"
+psycopg2-binary = "*"
+alembic = "*"
+python-dotenv = "*"
 
 [dev-packages]
 
