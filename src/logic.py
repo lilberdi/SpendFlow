@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Any
 
 # Автоматическое определение пути к файлу
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -65,22 +66,68 @@ def check_rules(data):
             category_limit = category_limits[category]
             
             if new_category_total > category_limit:
-                return f"❌ Отказ: Превышен лимит категории '{category}' ({category_limit}). " \
-                       f"Текущая сумма по категории: {data.get('category_total', 0)}, " \
-                       f"новая трата: {data['amount']}, итого: {new_category_total}"
+                return (
+                    f"❌ Отказ: Превышен лимит категории '{category}' ({category_limit}). "
+                    f"Текущая сумма по категории: {data.get('category_total', 0)}, "
+                    f"новая трата: {data['amount']}, итого: {new_category_total}"
+                )
             
             # Предупреждение при приближении к лимиту (80% от лимита)
             if new_category_total >= category_limit * 0.8:
-                return f"⚠️ Предупреждение: Приближение к лимиту категории '{category}'. " \
-                       f"Использовано {new_category_total} из {category_limit} ({int(new_category_total/category_limit*100)}%)"
+                return (
+                    f"⚠️ Предупреждение: Приближение к лимиту категории '{category}'. "
+                    f"Использовано {new_category_total} из {category_limit} "
+                    f"({int(new_category_total / category_limit * 100)}%)"
+                )
     
     # Проверка на наличие элементов из whitelist (опционально)
     has_whitelist_tag = any(tag in rules['lists']['whitelist'] for tag in data.get('tags_list', []))
     
     # Если все проверки пройдены
-    success_msg = f"✅ Успех: Трата соответствует правилам контроля бюджета"
+    success_msg = "✅ Успех: Трата соответствует правилам контроля бюджета"
     if has_whitelist_tag:
         success_msg += " (найден подтвержденный тег)"
     
     return success_msg
+
+
+def process_text_message(text: str, data_source: Any) -> str:
+    """
+    Простой «мозг» чатбота.
+    
+    Принимает текст пользователя, ищет ключевые слова в графе знаний
+    (Lab 3) и возвращает текстовый ответ.
+    """
+    if text is None:
+        return "Я не понял сообщение."
+    
+    original_text = text.strip()
+    query = original_text.lower()
+    
+    # Приветствие
+    if any(word in query for word in ["привет", "hello", "hi"]):
+        return (
+            "Привет! Я SpendFlow-бот по учету расходов. "
+            "Напиши название магазина (например, 'Uber' или 'Starbucks') "
+            "или категории ('Transport', 'Food')."
+        )
+    
+    # Работа с графом знаний (NetworkX Graph из Lab 3)
+    # Ищем узел без учета регистра
+    if hasattr(data_source, "nodes"):
+        node_map = {str(node).lower(): node for node in data_source.nodes}
+        if query in node_map:
+            node = node_map[query]
+            neighbors = list(data_source.neighbors(node))
+            if neighbors:
+                neighbors_str = ", ".join(str(n) for n in neighbors)
+                return f"Я нашёл '{node}' в графе знаний. С этим связано: {neighbors_str}."
+            return f"Я нашёл '{node}' в графе знаний, но у него пока нет связей."
+    
+    # Если ничего не нашли
+    return (
+        "Я не знаю такого термина. "
+        "Попробуйте ввести точное название магазина или категории "
+        "(например, 'Uber', 'Starbucks' или 'Transport')."
+    )
 

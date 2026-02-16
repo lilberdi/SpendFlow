@@ -6,7 +6,7 @@ import matplotlib
 matplotlib.use('Agg')  # Для работы без GUI
 
 from mock_data import test_entity as default_data
-from logic import check_rules, load_rules
+from logic import check_rules, load_rules, process_text_message
 from knowledge_graph import create_graph, find_related_entities, get_category_for_store, get_stores_in_category
 import networkx as nx
 
@@ -451,6 +451,37 @@ with explorer_col2:
     ax.axis('off')
     plt.tight_layout()
     st.pyplot(fig, use_container_width=True)
+
+st.write("")
+
+# ── Chatbot: SpendFlow Assistant ──
+st.markdown('<div class="spendflow-section-title">SpendFlow Chatbot</div>', unsafe_allow_html=True)
+
+# 1. Инициализация истории чата (память)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# 2. Отрисовка истории диалога
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# 3. Поле ввода (сообщение пользователя)
+user_prompt = st.chat_input("Введите ваш запрос про расходы, магазины или категории...")
+
+if user_prompt:
+    # 3.1. Сохраняем сообщение пользователя
+    st.session_state.messages.append({"role": "user", "content": user_prompt})
+    with st.chat_message("user"):
+        st.markdown(user_prompt)
+
+    # 3.2. Получаем ответ от \"мозга\" (используем граф знаний из Lab 3)
+    bot_reply = process_text_message(user_prompt, kg)
+
+    # 3.3. Сохраняем ответ бота
+    st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+    with st.chat_message("assistant"):
+        st.markdown(bot_reply)
 
 st.write("")
 
