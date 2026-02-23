@@ -8,6 +8,7 @@ matplotlib.use('Agg')  # Для работы без GUI
 from mock_data import test_entity as default_data
 from logic import check_rules, load_rules, process_text_message
 from knowledge_graph import create_graph, find_related_entities, get_category_for_store, get_stores_in_category
+from ml_classifier import get_default_classifier
 import networkx as nx
 
 
@@ -58,6 +59,15 @@ def get_knowledge_graph():
     return create_graph()
 
 kg = get_knowledge_graph()
+
+
+# Инициализация ML‑классификатора категорий расходов
+@st.cache_resource
+def get_expense_classifier():
+    return get_default_classifier()
+
+
+expense_classifier = get_expense_classifier()
 
 # ───── ЛЕВАЯ ПАНЕЛЬ (Навигация + фильтры) ─────
 with st.sidebar:
@@ -247,6 +257,10 @@ with details_col:
     st.write(
         f"**Теги:** {', '.join(current_test_data['tags_list']) if current_test_data['tags_list'] else 'нет'}"
     )
+
+    # Предсказание категории с помощью ML‑классификатора
+    ml_category, ml_prob = expense_classifier.predict(current_test_data["description"])
+    st.write(f"**ML‑категория (по описанию):** {ml_category} ({ml_prob * 100:.0f}%)")
 
 with result_col:
     st.write("**Проверка правил**")
