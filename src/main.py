@@ -9,6 +9,7 @@ from mock_data import test_entity as default_data
 from logic import check_rules, load_rules, process_text_message
 from knowledge_graph import create_graph, find_related_entities, get_category_for_store, get_stores_in_category
 from ml_classifier import get_default_classifier
+from anomaly_detector import get_expense_anomaly_detector
 import networkx as nx
 
 
@@ -68,6 +69,15 @@ def get_expense_classifier():
 
 
 expense_classifier = get_expense_classifier()
+
+
+# Инициализация детектора аномалий расходов
+@st.cache_resource
+def get_anomaly_detector():
+    return get_expense_anomaly_detector()
+
+
+anomaly_detector = get_anomaly_detector()
 
 # ───── ЛЕВАЯ ПАНЕЛЬ (Навигация + фильтры) ─────
 with st.sidebar:
@@ -261,6 +271,18 @@ with details_col:
     # Предсказание категории с помощью ML‑классификатора
     ml_category, ml_prob = expense_classifier.predict(current_test_data["description"])
     st.write(f"**ML‑категория (по описанию):** {ml_category} ({ml_prob * 100:.0f}%)")
+
+    # Оценка «нетипичности» траты (анализ аномалий)
+    anomaly_label, anomaly_score = anomaly_detector.score(
+        amount=current_test_data["amount"],
+        category=current_test_data["category"],
+    )
+    if anomaly_label == "normal":
+        st.write(f"**Аномалия:** нормальная трата (score={anomaly_score:.2f})")
+    elif anomaly_label == "warning":
+        st.write(f"**Аномалия:** на границе нормы (score={anomaly_score:.2f})")
+    else:
+        st.write(f"**Аномалия:** ⚠ нетипично высокая трата (score={anomaly_score:.2f})")
 
 with result_col:
     st.write("**Проверка правил**")
