@@ -10,6 +10,10 @@ from logic import check_rules, load_rules, process_text_message
 from knowledge_graph import create_graph, find_related_entities, get_category_for_store, get_stores_in_category
 from ml_classifier import get_default_classifier
 from anomaly_detector import get_expense_anomaly_detector
+from forecast import forecast_next_month, budget_success_probability
+from report_generator import generate_weekly_report, generate_monthly_summary
+from expense_clustering import get_expense_clusters
+from recommendations import get_smart_recommendations
 import networkx as nx
 
 
@@ -250,6 +254,90 @@ with chart_col2:
         }
     ).set_index("Тип")
     st.area_chart(cat_chart, height=260)
+
+st.write("")
+
+# ── Прогноз расходов и вероятность бюджета ──
+forecast_val, chart_data = forecast_next_month(total_limit)
+prob, prob_explanation = budget_success_probability(
+    total_spent=current_total,
+    total_limit=total_limit,
+)
+
+forecast_col1, forecast_col2 = st.columns([1.5, 1])
+with forecast_col1:
+    st.markdown(
+        '<div class="spendflow-section-title">Прогноз расходов на следующий месяц</div>',
+        unsafe_allow_html=True,
+    )
+    fig_fc, ax_fc = plt.subplots(figsize=(8, 4))
+    ax_fc.bar(chart_data["months"][:-1], chart_data["actual"], color="#3B82F6", alpha=0.7, label="Факт")
+    ax_fc.bar(chart_data["months"][-1], chart_data["forecast"], color="#F97316", alpha=0.7, label="Прогноз")
+    ax_fc.axhline(y=total_limit, color="red", linestyle="--", linewidth=2, label=f"Лимит {total_limit:,.0f} ₸")
+    ax_fc.legend()
+    ax_fc.set_ylabel("₸")
+    plt.tight_layout()
+    st.pyplot(fig_fc, use_container_width=True)
+
+with forecast_col2:
+    st.markdown(
+        '<div class="spendflow-section-title">Вероятность уложиться в бюджет</div>',
+        unsafe_allow_html=True,
+    )
+    st.metric(
+        label="Оценка",
+        value=f"{prob:.0f}%",
+        delta=prob_explanation[:60] + "..." if len(prob_explanation) > 60 else prob_explanation,
+    )
+    st.caption(prob_explanation)
+
+st.write("")
+
+# ── Умные рекомендации ──
+category_totals_demo = {
+    user_category: new_category_total,
+    **{c: 0 for c in category_limits if c != user_category},
+}
+tips = get_smart_recommendations(
+    current_total=current_total,
+    total_limit=total_limit,
+    category_totals=category_totals_demo,
+    category_limits=category_limits,
+    current_transaction_amount=user_amount,
+    current_category=user_category,
+)
+st.markdown('<div class="spendflow-section-title">Умные рекомендации</div>', unsafe_allow_html=True)
+for tip in tips:
+    st.write(f"• {tip}")
+
+st.write("")
+
+# ── Текстовый отчёт ──
+weekly_amounts = [12000, 8000, 9500, 11000, 15000, 13000, 7000]
+weekly_report = generate_weekly_report(weekly_amounts)
+category_totals_report = {
+    user_category: new_category_total,
+    **{c: 0 for c in category_limits if c != user_category},
+}
+monthly_report = generate_monthly_summary(
+    category_totals=category_totals_report,
+    total_spent=current_total,
+    total_limit=total_limit,
+)
+st.markdown('<div class="spendflow-section-title">Итоги недели и месяца</div>', unsafe_allow_html=True)
+st.markdown(weekly_report)
+st.markdown(monthly_report)
+
+st.write("")
+
+# ── Кластеризация трат (K-Means) ──
+clusters = get_expense_clusters(n_clusters=4)
+st.markdown('<div class="spendflow-section-title">Типы трат (кластеризация K-Means)</div>', unsafe_allow_html=True)
+cluster_cols = st.columns(4)
+for i, cluster in enumerate(clusters):
+    with cluster_cols[i % 4]:
+        st.markdown(f"**{cluster['name']}**")
+        st.caption(cluster["description"])
 
 st.write("")
 
@@ -511,8 +599,19 @@ if user_prompt:
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
-    # 3.2. Получаем ответ от \"мозга\" (используем граф знаний из Lab 3)
-    bot_reply = process_text_message(user_prompt, kg)
+    # 3.2. Получаем ответ от «мозга» (граф знаний + умные рекомендации по бюджету)
+    chat_context = {
+        "current_total": current_total,
+        "total_limit": total_limit,
+        "category_totals": {
+            user_category: new_category_total,
+            **{c: 0 for c in category_limits if c != user_category},
+        },
+        "category_limits": category_limits,
+        "amount": user_amount,
+        "category": user_category,
+    }
+    bot_reply = process_text_message(user_prompt, kg, context=chat_context)
 
     # 3.3. Сохраняем ответ бота
     st.session_state.messages.append({"role": "assistant", "content": bot_reply})

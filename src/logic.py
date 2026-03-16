@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 # Автоматическое определение пути к файлу
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -91,12 +91,11 @@ def check_rules(data):
     return success_msg
 
 
-def process_text_message(text: str, data_source: Any) -> str:
+def process_text_message(text: str, data_source: Any, context: dict = None) -> str:
     """
-    Простой «мозг» чатбота.
+    «Мозг» чатбота: поиск в графе знаний и умные рекомендации по бюджету.
     
-    Принимает текст пользователя, ищет ключевые слова в графе знаний
-    (Lab 3) и возвращает текстовый ответ.
+    context: опционально — текущие траты и лимиты для рекомендаций.
     """
     if text is None:
         return "Я не понял сообщение."
@@ -104,12 +103,34 @@ def process_text_message(text: str, data_source: Any) -> str:
     original_text = text.strip()
     query = original_text.lower()
     
+    # Умные рекомендации (если запросили и есть контекст)
+    if context and any(
+        word in query
+        for word in [
+            "бюджет", "рекомендации", "советы", "как дела", "совет",
+            "лимит", "перерасход", "помощь", "что делать",
+        ]
+    ):
+        try:
+            from recommendations import get_smart_recommendations
+            tips = get_smart_recommendations(
+                current_total=context.get("current_total", 0),
+                total_limit=context.get("total_limit", 10000),
+                category_totals=context.get("category_totals", {}),
+                category_limits=context.get("category_limits", {}),
+                current_transaction_amount=context.get("amount", 0),
+                current_category=context.get("category"),
+            )
+            return "**Рекомендации по бюджету:**\n\n" + "\n\n".join(f"• {t}" for t in tips)
+        except Exception:
+            pass
+    
     # Приветствие
     if any(word in query for word in ["привет", "hello", "hi"]):
         return (
             "Привет! Я SpendFlow-бот по учету расходов. "
-            "Напиши название магазина (например, 'Uber' или 'Starbucks') "
-            "или категории ('Transport', 'Food')."
+            "Напиши название магазина (например, 'Uber' или 'Starbucks'), "
+            "категории ('Transport', 'Food') или спроси про **бюджет** и **рекомендации**."
         )
     
     # Работа с графом знаний (NetworkX Graph из Lab 3)
