@@ -14,6 +14,7 @@ from forecast import forecast_next_month, budget_success_probability
 from report_generator import generate_weekly_report, generate_monthly_summary
 from expense_clustering import get_expense_clusters
 from recommendations import get_smart_recommendations
+from database import init_db, add_transaction, fetch_recent_transactions, sum_amounts_since
 import networkx as nx
 
 
@@ -56,6 +57,13 @@ st.markdown(
 )
 
 rules = load_rules()
+
+# ---------------------------------------------------------------------------
+# Локальная база SQLite: создаём файл и таблицу при каждом запуске скрипта.
+# Это дёшево по времени (CREATE IF NOT EXISTS) и гарантирует готовность хранилища
+# до любых кнопок «Сохранить».
+# ---------------------------------------------------------------------------
+init_db()
 
 # Инициализация графа знаний (создается один раз и кэшируется)
 @st.cache_resource
@@ -391,6 +399,47 @@ with result_col:
             st.info(result)
     else:
         st.info("Нажмите кнопку, чтобы выполнить проверку по правилам.")
+
+st.write("")
+
+# ── История трат в SQLite (персистентное хранилище) ──
+# Здесь пользователь может зафиксировать текущую форму как запись в файле
+# spendflow.db в корне проекта. Данные переживают перезапуск Streamlit.
+# Это не замена полноценному банковскому импорту, но — первый шаг к «реальной» истории.
+st.markdown(
+    '<div class="spendflow-section-title">История трат (SQLite)</div>',
+    unsafe_allow_html=True,
+)
+
+hist_col1, hist_col2 = st.columns([1, 1.2])
+
+with hist_col1:
+    st.caption(
+        "Файл базы: `spendflow.db` в корне репозитория (в `.gitignore`, не коммитится). "
+        "Сохраняется описание, сумма, категория и теги из текущей формы слева."
+    )
+    if st.button("💾 Сохранить текущую трату в историю", key="save_tx_sqlite"):
+        try:
+            new_id = add_transaction(
+                description=user_description,
+                amount=float(user_amount),
+                category=user_category,
+                tags=current_test_data["tags_list"],
+            )
+            st.success(f"Запись добавлена (id={new_id}). Обновите страницу или прокрутите таблицу ниже.")
+        except Exception as e:
+            st.error(f"Не удалось сохранить: {e}")
+
+    total_in_db = sum_amounts_since()
+    st.metric("Сумма всех сохранённых трат в БД", f"{total_in_db:,.0f} ₸".replace(",", " "))
+
+with hist_col2:
+    recent = fetch_recent_transactions(limit=30)
+    if recent:
+        df_hist = pd.DataFrame(recent)
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+    else:
+        st.info("Пока нет сохранённых записей. Заполните форму слева и нажмите «Сохранить».")
 
 st.write("")
 
