@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import date
+from datetime import date, datetime, time, timezone
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
@@ -14,7 +14,14 @@ from forecast import forecast_next_month, budget_success_probability
 from report_generator import generate_weekly_report, generate_monthly_summary
 from expense_clustering import get_expense_clusters
 from recommendations import get_smart_recommendations
-from database import init_db, add_transaction, fetch_recent_transactions, sum_amounts_since
+from database import (
+    init_db,
+    add_transaction,
+    fetch_transactions_filtered,
+    sum_amounts_since,
+    sum_amounts_filtered,
+    delete_transaction,
+)
 import networkx as nx
 
 
@@ -434,12 +441,96 @@ with hist_col1:
     st.metric("Сумма всех сохранённых трат в БД", f"{total_in_db:,.0f} ₸".replace(",", " "))
 
 with hist_col2:
-    recent = fetch_recent_transactions(limit=30)
-    if recent:
-        df_hist = pd.DataFrame(recent)
-        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+    st.markdown("**Фильтры истории**")
+    hist_cat_options = ["Все"] + categories
+    hist_category = st.selectbox(
+        "Категория в таблице",
+        options=hist_cat_options,
+        key="hist_filter_category",
+    )
+    hist_period = st.checkbox("Ограничить период", value=False, key="hist_filter_period")
+    if hist_period:
+        dr = st.date_input(
+            "Период (включительно)",
+            value=(date.today().replace(day=1), date.today()),
+            key="hist_date_range",
+        )
+        if isinstance(dr, tuple) and len(dr) == 2:
+            d0, d1 = dr
+            date_from_iso = datetime.combine(d0, time.min, tzinfo=timezone.utc).isoformat()
+            date_to_iso = datetime.combine(d1, time.max.replace(microsecond=999999), tzinfo=timezone.utc).isoformat()
+        else:
+            date_from_iso = None
+            date_to_iso = None
     else:
-        st.info("Пока нет сохранённых записей. Заполните форму слева и нажмите «Сохранить».")
+        date_from_iso = None
+        date_to_iso = None
+
+    hist_sum_row = st.columns(2)
+    with hist_sum_row[0]:
+        hist_amt_min = st.number_input(
+            "Сумма от (₸), 0 = без порога",
+            min_value=0,
+            value=0,
+            step=100,
+            key="hist_amt_min",
+        )
+    with hist_sum_row[1]:
+        hist_amt_max = st.number_input(
+            "Сумма до (₸), 0 = без потолка",
+            min_value=0,
+            value=0,
+            step=100,
+            key="hist_amt_max",
+        )
+
+    cat_for_sql = None if hist_category == "Все" else hist_category
+    filtered = fetch_transactions_filtered(
+        limit=200,
+        category=cat_for_sql,
+        date_from_iso=date_from_iso,
+        date_to_iso=date_to_iso,
+        amount_min=float(hist_amt_min) if hist_amt_min else None,
+        amount_max=float(hist_amt_max) if hist_amt_max else None,
+    )
+    sum_filtered = sum_amounts_filtered(
+        category=cat_for_sql,
+        date_from_iso=date_from_iso,
+        date_to_iso=date_to_iso,
+        amount_min=float(hist_amt_min) if hist_amt_min else None,
+        amount_max=float(hist_amt_max) if hist_amt_max else None,
+    )
+    st.caption(f"Сумма по текущему фильтру (все строки в БД, не только лимит таблицы): **{sum_filtered:,.0f} ₸**".replace(",", " "))
+
+    if filtered:
+        df_hist = pd.DataFrame(filtered)
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        csv_bytes = df_hist.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="⬇ Экспорт отфильтрованных строк в CSV",
+            data=csv_bytes,
+            file_name="spendflow_history.csv",
+            mime="text/csv",
+            key="hist_export_csv",
+        )
+
+        st.markdown("**Удаление записи**")
+        id_options = [int(r["id"]) for r in filtered]
+        pick_id = st.selectbox("Id строки", options=id_options, key="hist_delete_pick")
+        confirm_del = st.checkbox("Подтверждаю удаление", key="hist_delete_confirm")
+        if st.button("Удалить выбранную запись", key="hist_delete_btn"):
+            if not confirm_del:
+                st.warning("Отметьте подтверждение.")
+            elif delete_transaction(pick_id):
+                st.success(f"Запись id={pick_id} удалена.")
+                st.rerun()
+            else:
+                st.error("Не удалось удалить (запись не найдена).")
+    else:
+        st.info(
+            "Нет строк по выбранным фильтрам или база пуста. "
+            "Сохраните трату слева или ослабьте фильтры."
+        )
 
 st.write("")
 

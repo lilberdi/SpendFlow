@@ -147,6 +147,108 @@ def add_transaction(
         return int(cur.lastrowid)
 
 
+def _transactions_filter_sql(
+    category: Optional[str] = None,
+    date_from_iso: Optional[str] = None,
+    date_to_iso: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+) -> tuple[str, List[Any]]:
+    """
+    Собирает фрагмент WHERE и список параметров для запросов к `transactions`.
+
+    Параметры с None не добавляют условий. Для сумм: нижняя граница учитывается
+    только если amount_min > 0; верхняя — если amount_max > 0 (0 означает «без потолка»).
+    """
+    parts: List[str] = []
+    params: List[Any] = []
+    if category:
+        parts.append("category = ?")
+        params.append(category)
+    if date_from_iso:
+        parts.append("created_at >= ?")
+        params.append(date_from_iso)
+    if date_to_iso:
+        parts.append("created_at <= ?")
+        params.append(date_to_iso)
+    if amount_min is not None and amount_min > 0:
+        parts.append("amount >= ?")
+        params.append(float(amount_min))
+    if amount_max is not None and amount_max > 0:
+        parts.append("amount <= ?")
+        params.append(float(amount_max))
+    where = " AND ".join(parts) if parts else "1=1"
+    return where, params
+
+
+def fetch_transactions_filtered(
+    limit: int = 200,
+    category: Optional[str] = None,
+    date_from_iso: Optional[str] = None,
+    date_to_iso: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Транзакции с фильтрами, от новых к старым (для таблицы и экспорта CSV).
+    """
+    limit = max(1, min(int(limit), 500))
+    where, params = _transactions_filter_sql(
+        category=category,
+        date_from_iso=date_from_iso,
+        date_to_iso=date_to_iso,
+        amount_min=amount_min,
+        amount_max=amount_max,
+    )
+    sql = f"""
+        SELECT id, created_at, description, amount, category, tags
+        FROM transactions
+        WHERE {where}
+        ORDER BY created_at DESC
+        LIMIT ?;
+    """
+    params = list(params) + [limit]
+
+    with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(sql, params)
+        rows = cur.fetchall()
+
+    return [dict(r) for r in rows]
+
+
+def sum_amounts_filtered(
+    category: Optional[str] = None,
+    date_from_iso: Optional[str] = None,
+    date_to_iso: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+) -> float:
+    """Сумма `amount` по тем же условиям, что и у `fetch_transactions_filtered` (без лимита строк)."""
+    where, params = _transactions_filter_sql(
+        category=category,
+        date_from_iso=date_from_iso,
+        date_to_iso=date_to_iso,
+        amount_min=amount_min,
+        amount_max=amount_max,
+    )
+    sql = f"SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE {where};"
+
+    with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        cur = conn.execute(sql, params)
+        row = cur.fetchone()
+        return float(row[0] if row and row[0] is not None else 0.0)
+
+
+def delete_transaction(transaction_id: int) -> bool:
+    """Удаляет строку по `id`. Возвращает True, если что‑то было удалено."""
+    tid = int(transaction_id)
+    with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        cur = conn.execute("DELETE FROM transactions WHERE id = ?;", (tid,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def fetch_recent_transactions(limit: int = 50) -> List[Dict[str, Any]]:
     """
     Возвращает последние `limit` транзакций от новых к старым.
