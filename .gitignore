@@ -1,3 +1,7 @@
 data
 .env
 .DS_Store
+.venv/
+.venv-ci/
+# Локальная SQLite-база транзакций (создаётся при работе приложения)
+spendflow.db

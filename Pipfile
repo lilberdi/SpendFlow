@@ -4,7 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pandas = "*"
 streamlit = "*"
 notebook = "*"
 opencv-python-headless = "*"
@@ -12,6 +11,11 @@ sqlalchemy = "*"
 psycopg2-binary = "*"
 alembic = "*"
 python-dotenv = "*"
+matplotlib = "*"
+networkx = "*"
+scikit-learn = "*"
+pandas = "*"
+numpy = "*"
 
 [dev-packages]
 
