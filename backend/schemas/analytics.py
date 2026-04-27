@@ -5,9 +5,9 @@ class RulesCheckRequest(BaseModel):
     description: str
     amount: float
     category: str
-    category_total: float = 0
-    total_spent: float = 0
-    is_budget_exceeded: bool = False
+    category_total: float | None = None
+    total_spent: float | None = None
+    is_budget_exceeded: bool | None = None
     tags_list: list[str] = []
 
 

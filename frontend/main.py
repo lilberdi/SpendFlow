@@ -59,15 +59,15 @@ rules = {
         'max_total_budget': 100000,
         'max_category_budget': {
             'Transport': 5000,
-            'Food': 3000,
-            'Shopping': 2000,
-            'Entertainment': 1500,
-            'Other': 1000,
+            'Food': 7000,
+            'Leisure': 6000,
+            'Shopping': 8000,
+            'Bills': 9000,
         },
     }
 }
 
-categories = ['Transport', 'Food', 'Shopping', 'Entertainment', 'Other']
+categories = ['Transport', 'Food', 'Leisure', 'Shopping', 'Bills']
 
 with st.sidebar:
     st.subheader('Параметры')

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -196,8 +196,20 @@ async def delete_transaction(transaction_id: int, db: Session = Depends(get_db_s
 
 
 @router.post('/rules/check')
-async def rules_check(payload: RulesCheckRequest) -> dict[str, str]:
-    return {'result': check_rules(payload.model_dump())}
+async def rules_check(payload: RulesCheckRequest, db: Session = Depends(get_db_session)) -> dict[str, str]:
+    repo = TransactionRepository(db)
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    data = payload.model_dump()
+    if data.get('total_spent') is None:
+        data['total_spent'] = repo.sum(date_from=month_start)
+    if data.get('category_total') is None:
+        data['category_total'] = repo.sum(category=payload.category, date_from=month_start)
+    if data.get('is_budget_exceeded') is None:
+        # Для rule-check считаем признаком превышения общий лимит из rules.json внутри check_rules.
+        data['is_budget_exceeded'] = False
+    return {'result': check_rules(data)}
 
 
 @router.get('/forecast', response_model=ForecastResponse)

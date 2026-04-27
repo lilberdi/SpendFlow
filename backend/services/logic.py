@@ -35,9 +35,9 @@ def check_rules(data: dict[str, Any]) -> str:
     if rules['critical_rules']['must_not_exceed_category_budget']:
         category = data.get('category', 'Other')
         category_limits = rules['thresholds']['max_category_budget']
-        if category in category_limits:
+        category_limit = category_limits.get(category, category_limits.get('Other'))
+        if category_limit:
             new_category_total = data.get('category_total', 0) + data['amount']
-            category_limit = category_limits[category]
             if new_category_total > category_limit:
                 return (
                     f"❌ Отказ: Превышен лимит категории '{category}' ({category_limit}). "
