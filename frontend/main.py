@@ -30,6 +30,26 @@ def api_delete(path: str):
     return response.json()
 
 
+def to_iso_utc(dt: datetime) -> str:
+    dt_utc = dt.replace(tzinfo=timezone.utc, microsecond=0)
+    return dt_utc.isoformat().replace('+00:00', 'Z')
+
+
+def clean_query_params(raw_params: dict) -> dict:
+    cleaned = {}
+    for key, value in raw_params.items():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped or stripped.lower() == 'none':
+                continue
+            cleaned[key] = stripped
+            continue
+        cleaned[key] = value
+    return cleaned
+
+
 st.set_page_config(page_title='SpendFlow Dashboard', page_icon='💸', layout='wide')
 st.title('SpendFlow Frontend (Streamlit)')
 st.caption('Тонкий клиент: UI работает только через HTTP API backend (FastAPI).')
@@ -157,17 +177,25 @@ with crud_col2:
     if period_on:
         dr = st.date_input('Период', value=(date.today().replace(day=1), date.today()))
         if isinstance(dr, tuple) and len(dr) == 2:
-            date_from = datetime.combine(dr[0], time.min, tzinfo=timezone.utc).isoformat()
-            date_to = datetime.combine(dr[1], time.max.replace(microsecond=999999), tzinfo=timezone.utc).isoformat()
+            date_from = to_iso_utc(datetime.combine(dr[0], time.min))
+            date_to = to_iso_utc(datetime.combine(dr[1], time.max))
 
     params = {'limit': 200}
     if date_from:
         params['date_from'] = date_from
     if date_to:
         params['date_to'] = date_to
+    params = clean_query_params(params)
+
+    sum_params = {}
+    if date_from:
+        sum_params['date_from'] = date_from
+    if date_to:
+        sum_params['date_to'] = date_to
+    sum_params = clean_query_params(sum_params)
 
     rows = api_get('/api/v1/transactions', params=params)
-    total = api_get('/api/v1/transactions/sum', params=params)['total']
+    total = api_get('/api/v1/transactions/sum', params=sum_params)['total']
     st.caption(f"Сумма по фильтру: {total:,.0f} ₸".replace(',', ' '))
 
     if rows:

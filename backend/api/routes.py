@@ -1,6 +1,7 @@
 from datetime import datetime
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from backend.db.session import get_db_session
@@ -20,6 +21,18 @@ from backend.services.logic import check_rules
 from backend.services.recommendations import get_smart_recommendations
 
 router = APIRouter(prefix='/api/v1', tags=['api'])
+logger = logging.getLogger(__name__)
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    # Accept both trailing Z and explicit timezone offset formats.
+    normalized = value.strip().replace('Z', '+00:00')
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f'Invalid datetime format: {value}') from exc
 
 
 @router.get('/health')
@@ -54,6 +67,43 @@ async def list_transactions(
     )
 
 
+@router.get('/transactions/sum')
+async def sum_transactions(
+    request: Request,
+    category: str | None = None,
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    limit: int | None = None,
+    db: Session = Depends(get_db_session),
+) -> dict[str, float]:
+    repo = TransactionRepository(db)
+    date_from_dt = _parse_iso_datetime(date_from)
+    date_to_dt = _parse_iso_datetime(date_to)
+    logger.info(
+        'sum_transactions params raw=%s parsed=%s',
+        dict(request.query_params),
+        {
+            'category': category,
+            'date_from': date_from_dt.isoformat() if date_from_dt else None,
+            'date_to': date_to_dt.isoformat() if date_to_dt else None,
+            'amount_min': amount_min,
+            'amount_max': amount_max,
+            'limit': limit,
+        },
+    )
+    return {
+        'total': repo.sum(
+            category=category,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+            amount_min=amount_min,
+            amount_max=amount_max,
+        )
+    }
+
+
 @router.get('/transactions/{transaction_id}', response_model=TransactionRead)
 async def get_transaction(transaction_id: int, db: Session = Depends(get_db_session)) -> TransactionRead:
     repo = TransactionRepository(db)
@@ -80,27 +130,6 @@ async def update_transaction(
 async def delete_transaction(transaction_id: int, db: Session = Depends(get_db_session)) -> dict[str, bool]:
     repo = TransactionRepository(db)
     return {'deleted': repo.delete(transaction_id)}
-
-
-@router.get('/transactions/sum')
-async def sum_transactions(
-    category: str | None = None,
-    date_from: datetime | None = Query(default=None),
-    date_to: datetime | None = Query(default=None),
-    amount_min: float | None = None,
-    amount_max: float | None = None,
-    db: Session = Depends(get_db_session),
-) -> dict[str, float]:
-    repo = TransactionRepository(db)
-    return {
-        'total': repo.sum(
-            category=category,
-            date_from=date_from,
-            date_to=date_to,
-            amount_min=amount_min,
-            amount_max=amount_max,
-        )
-    }
 
 
 @router.post('/rules/check')
