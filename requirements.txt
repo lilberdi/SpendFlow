@@ -47,7 +47,6 @@ scipy==1.17.0
 six==1.17.0
 smmap==5.0.2
 sqlalchemy==2.0.46
-streamlit==1.54.0
 fastapi==0.121.0
 uvicorn==0.38.0
 pydantic-settings==2.11.0
@@ -58,6 +57,7 @@ tornado==6.5.4
 typing-extensions==4.15.0
 tzdata==2025.3
 urllib3==2.6.3
+python-multipart==0.0.20
 
 # Jupyter (опционально, см. Pipfile)
 # notebook

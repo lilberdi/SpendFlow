@@ -33,6 +33,9 @@ class BudgetRepository:
         self.db.refresh(row)
         return row
 
+    def upsert_batch(self, items: list[BudgetCreate]) -> list[BudgetModel]:
+        return [self.upsert(item) for item in items]
+
     def list(self, month: int | None = None, year: int | None = None) -> list[BudgetModel]:
         stmt = select(BudgetModel)
         if month is not None:

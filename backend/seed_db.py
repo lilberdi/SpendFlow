@@ -6,7 +6,7 @@ import random
 
 from sqlalchemy import text
 
-from backend.db.models import BudgetModel, TransactionModel
+from backend.db.models import BudgetModel, RegularPaymentModel, TransactionModel
 from backend.db.session import SessionLocal
 
 
@@ -112,6 +112,12 @@ def _generate_current_month_anomalies(now: datetime) -> list[TransactionModel]:
     return rows
 
 
+def _first_of_next_month_utc(now: datetime) -> datetime:
+    if now.month == 12:
+        return now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
 def _seed_budgets(months: list[MonthBucket], now: datetime) -> list[BudgetModel]:
     # Лимиты для полного месяца (часть категорий будут превышены) + для текущего месяца.
     last_full = months[-1]
@@ -124,8 +130,40 @@ def _seed_budgets(months: list[MonthBucket], now: datetime) -> list[BudgetModel]
         BudgetModel(category_name="Shopping", limit_amount=80000, month=now.month, year=now.year),
         BudgetModel(category_name="Leisure", limit_amount=70000, month=now.month, year=now.year),
         BudgetModel(category_name="Transport", limit_amount=60000, month=now.month, year=now.year),
+        BudgetModel(category_name="Food", limit_amount=70000, month=now.month, year=now.year),
+        BudgetModel(category_name="Bills", limit_amount=1000000, month=now.month, year=now.year),
     ]
     return budget_rows
+
+
+def _seed_regular_payments(now: datetime) -> list[RegularPaymentModel]:
+    nxt = _first_of_next_month_utc(now)
+    return [
+        RegularPaymentModel(
+            name="Продукты (супермаркет)",
+            amount=35000.0,
+            category_name="Food",
+            periodicity="monthly",
+            next_charge_at=nxt,
+            last_paid_at=None,
+        ),
+        RegularPaymentModel(
+            name="Интернет и ТВ",
+            amount=12000.0,
+            category_name="Bills",
+            periodicity="monthly",
+            next_charge_at=nxt,
+            last_paid_at=None,
+        ),
+        RegularPaymentModel(
+            name="Транспортная карта",
+            amount=25000.0,
+            category_name="Transport",
+            periodicity="monthly",
+            next_charge_at=nxt,
+            last_paid_at=None,
+        ),
+    ]
 
 
 def seed() -> None:
@@ -135,7 +173,7 @@ def seed() -> None:
 
     session = SessionLocal()
     try:
-        session.execute(text("TRUNCATE TABLE transactions, budgets RESTART IDENTITY CASCADE;"))
+        session.execute(text("TRUNCATE TABLE transactions, budgets, regular_payments RESTART IDENTITY CASCADE;"))
 
         rows: list[TransactionModel] = []
         for bucket in months:
@@ -146,11 +184,15 @@ def seed() -> None:
         budget_rows = _seed_budgets(months, now)
         session.add_all(budget_rows)
 
+        regular_rows = _seed_regular_payments(now)
+        session.add_all(regular_rows)
+
         session.commit()
 
         print("Seed completed successfully.")
         print(f"Inserted transactions: {len(rows)}")
         print(f"Inserted budgets: {len(budget_rows)}")
+        print(f"Inserted regular_payments: {len(regular_rows)}")
         print("Run command: python3 -m backend.seed_db")
     finally:
         session.close()

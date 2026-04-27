@@ -8,6 +8,10 @@ class BudgetCreate(BaseModel):
     year: int = Field(ge=2000, le=2100)
 
 
+class BudgetBatchUpsert(BaseModel):
+    items: list[BudgetCreate] = Field(min_length=1, max_length=50)
+
+
 class BudgetRead(BaseModel):
     id: int
     category_name: str
