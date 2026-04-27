@@ -31,6 +31,20 @@ class AnomalyScoreResponse(BaseModel):
     score: float
 
 
+class TransactionAnomaly(BaseModel):
+    id: int
+    category: str
+    amount: float
+    anomaly_label: str
+    anomaly_score: float
+    is_anomaly: bool
+
+
+class AnomaliesResponse(BaseModel):
+    source: str
+    transactions: list[TransactionAnomaly]
+
+
 class RecommendationRequest(BaseModel):
     current_total: float
     total_limit: float

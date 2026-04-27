@@ -2,29 +2,60 @@ from datetime import date
 
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from backend.db.models import TransactionModel
 
 
-def _get_synthetic_monthly_data() -> list[tuple[int, float]]:
-    np.random.seed(42)
-    base = 75000
-    months = list(range(6))
-    amounts = [base + np.random.randint(-8000, 12000) for _ in months]
-    return list(zip(months, amounts))
+def _get_monthly_history(db: Session) -> list[tuple[str, float]]:
+    stmt = (
+        select(
+            func.to_char(func.date_trunc('month', TransactionModel.created_at), 'YYYY-MM').label('month_key'),
+            func.coalesce(func.sum(TransactionModel.amount), 0.0).label('total_amount'),
+        )
+        .group_by('month_key')
+        .order_by('month_key')
+    )
+    rows = db.execute(stmt).all()
+    return [(str(month_key), float(total_amount)) for month_key, total_amount in rows]
 
 
-def forecast_next_month(total_limit: float) -> tuple[float, dict]:
-    data = _get_synthetic_monthly_data()
-    x = np.array([[m] for m, _ in data])
-    y = np.array([a for _, a in data])
+def forecast_next_month(total_limit: float, db: Session) -> tuple[float, dict]:
+    history = _get_monthly_history(db)
+    if not history:
+        return 0.0, {
+            'months': ['M1', 'M2'],
+            'actual': [0.0],
+            'forecast': 0.0,
+            'limit': total_limit,
+            'message': 'Недостаточно данных: в истории нет транзакций.',
+        }
 
+    y = np.array([amount for _, amount in history], dtype=float)
+    months = [f'M{i + 1}' for i in range(len(history))]
+
+    if len(history) < 2:
+        # Fallback: для 1 месяца обучения регрессии недостаточно.
+        fallback = float(y.mean())
+        return fallback, {
+            'months': [*months, f'M{len(history) + 1}'],
+            'actual': y.tolist(),
+            'forecast': fallback,
+            'limit': total_limit,
+            'message': 'Недостаточно истории (<2 месяцев), использовано среднее значение.',
+        }
+
+    x = np.arange(len(history), dtype=float).reshape(-1, 1)
     model = LinearRegression().fit(x, y)
-    forecast = max(0.0, float(model.predict([[len(data)]])[0]))
+    forecast = max(0.0, float(model.predict([[len(history)]])[0]))
 
     return forecast, {
-        'months': [f'М{i + 1}' for i in range(len(data) + 1)],
-        'actual': [a for _, a in data],
+        'months': [*months, f'M{len(history) + 1}'],
+        'actual': y.tolist(),
         'forecast': forecast,
         'limit': total_limit,
+        'message': 'Прогноз рассчитан на основе транзакций из PostgreSQL.',
     }
 
 

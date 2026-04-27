@@ -24,5 +24,7 @@ class TransactionRead(BaseModel):
     amount: float
     category: str
     tags: str
+    limit_warning: bool = False
+    warning_message: str | None = None
 
     model_config = {'from_attributes': True}

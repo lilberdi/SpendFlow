@@ -79,6 +79,25 @@ with st.sidebar:
     is_budget_exceeded = st.checkbox('Бюджет уже превышен', value=False)
     tags_input = st.text_input('Теги (через запятую)', value='')
 
+    st.markdown('---')
+    st.subheader('Управление бюджетом')
+    budget_month = st.number_input('Месяц лимита', min_value=1, max_value=12, value=date.today().month, step=1)
+    budget_year = st.number_input('Год лимита', min_value=2000, max_value=2100, value=date.today().year, step=1)
+    budget_category = st.selectbox('Категория лимита', options=categories, key='budget_category')
+    budget_amount = st.number_input('Лимит категории (₸)', min_value=1.0, value=10000.0, step=500.0)
+    if st.button('Сохранить лимит', use_container_width=True):
+        budget_payload = {
+            'category_name': budget_category,
+            'limit_amount': budget_amount,
+            'month': int(budget_month),
+            'year': int(budget_year),
+        }
+        budget_row = api_post('/api/v1/budgets', budget_payload)
+        st.success(
+            f"Лимит сохранён: {budget_row['category_name']} {budget_row['month']:02d}.{budget_row['year']} = "
+            f"{budget_row['limit_amount']:,.0f} ₸".replace(',', ' ')
+        )
+
 
 col1, col2 = st.columns(2)
 
@@ -136,14 +155,42 @@ with col2:
     st.metric('Прогноз на следующий месяц', f"{forecast_data['forecast']:,.0f} ₸".replace(',', ' '))
     st.metric('Вероятность уложиться в бюджет', f"{probability_data['probability']:.0f}%")
     st.caption(probability_data['explanation'])
+    if forecast_data.get('chart_data', {}).get('message'):
+        st.info(forecast_data['chart_data']['message'])
 
     chart_data = forecast_data['chart_data']
     fig, ax = plt.subplots(figsize=(8, 3))
-    ax.bar(chart_data['months'][:-1], chart_data['actual'], label='Факт')
-    ax.bar(chart_data['months'][-1], chart_data['forecast'], label='Прогноз', color='orange')
+    months = chart_data.get('months', [])
+    actual = chart_data.get('actual', [])
+    forecast_value = float(chart_data.get('forecast', 0.0))
+    series = [*actual, forecast_value] if months else []
+    colors = ['#3B82F6'] * max(len(series) - 1, 0) + (['#F97316'] if series else [])
+    ax.bar(months, series, label='Факт/Прогноз', color=colors)
     ax.axhline(y=chart_data['limit'], color='red', linestyle='--', label='Лимит')
+    if months:
+        ax.text(months[-1], forecast_value, f" {months[-1]}", va='bottom', ha='left')
     ax.legend()
     st.pyplot(fig, use_container_width=True)
+
+    st.subheader('Состояние лимитов (Top-3)')
+    budget_rows = api_get('/api/v1/budgets', params={'month': date.today().month, 'year': date.today().year})
+    budget_rows_sorted = sorted(budget_rows, key=lambda r: float(r.get('usage_ratio', 0.0)), reverse=True)[:3]
+    if budget_rows_sorted:
+        for row in budget_rows_sorted:
+            ratio = float(row.get('usage_ratio', 0.0))
+            spent = float(row.get('spent_amount', 0.0))
+            limit_amount = float(row.get('limit_amount', 0.0))
+            if ratio >= 0.9:
+                st.markdown(
+                    f":red[**{row['category_name']}** — {spent:,.0f}/{limit_amount:,.0f} ₸ ({ratio * 100:.0f}%)]".replace(',', ' ')
+                )
+            else:
+                st.markdown(
+                    f"**{row['category_name']}** — {spent:,.0f}/{limit_amount:,.0f} ₸ ({ratio * 100:.0f}%)".replace(',', ' ')
+                )
+            st.progress(min(max(ratio, 0.0), 1.0))
+    else:
+        st.info('Для текущего месяца лимиты пока не заданы.')
 
 
 st.subheader('CRUD транзакций')
@@ -160,6 +207,8 @@ with crud_col1:
         }
         created = api_post('/api/v1/transactions', payload)
         st.success(f"Создана запись id={created['id']}")
+        if created.get('limit_warning'):
+            st.warning(created.get('warning_message') or 'Лимит категории превышен.')
 
     st.markdown('**Удаление транзакции**')
     tx_id_to_delete = st.number_input('ID для удаления', min_value=1, value=1, step=1)
