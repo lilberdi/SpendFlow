@@ -3,13 +3,48 @@ services:
     image: postgres:16
     container_name: spendflow_db
     environment:
-      POSTGRES_DB: spendflow
-      POSTGRES_USER: spendflow
-      POSTGRES_PASSWORD: spendflow
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - spendflow_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      target: backend
+    container_name: spendflow_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      APP_ENV: ${APP_ENV}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    container_name: spendflow_frontend
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE_URL: ${API_BASE_URL}
+    depends_on:
+      - backend
+    volumes:
+      - .:/app
 
 volumes:
   spendflow_pg:
